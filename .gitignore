@@ -1,0 +1,20 @@
+# 依赖与数据，不入库
+node_modules
+node_modules/
+models/
+
+# 编译产物（用 npm run build 生成）
+bin/xtype
+bin/xpaste
+bin/xfocus
+bin/xgetclip
+
+# 运行时产物
+*.log
+*.sock
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store

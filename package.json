@@ -1,0 +1,31 @@
+{
+  "name": "voice-typer",
+  "version": "1.0.0",
+  "description": "Linux 桌面全局语音输入：X11 下按快捷键说话，文字直接输入到任意应用，基于 sherpa-onnx 本地推理",
+  "type": "module",
+  "bin": {
+    "voice": "bin/voice"
+  },
+  "scripts": {
+    "build": "gcc -O2 -Wall -o bin/xtype src/xtype.c -ldl && gcc -O2 -Wall -o bin/xpaste src/xpaste.c -ldl && gcc -O2 -Wall -o bin/xfocus src/xfocus.c -ldl && gcc -O2 -Wall -o bin/xgetclip src/xgetclip.c -ldl",
+    "start": "node src/voice-typer.mjs dmn",
+    "status": "node src/voice-typer.mjs status"
+  },
+  "keywords": [
+    "speech-to-text",
+    "asr",
+    "dictation",
+    "voice-typing",
+    "x11",
+    "sherpa-onnx",
+    "paraformer",
+    "chinese"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "sherpa-onnx-node": "^1.13.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

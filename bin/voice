@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# voice —— voice-typer 的便捷入口
+#
+#   voice            切换：没在录音则开始，正在录音则停止并输入
+#   voice start      开始录音
+#   voice stop       停止、识别并输入
+#   voice status     查看状态
+#   voice daemon     前台运行守护进程（调试用）
+#   voice quit       关闭守护进程
+#   voice install    安装 GNOME 全局快捷键（默认 F9 单键）
+#   voice uninstall  移除快捷键
+
+set -uo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NODE_BIN="${NODE_BIN:-$(command -v node)}"
+
+case "${1:-toggle}" in
+  daemon) exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" dmn ;;
+  toggle|start|stop|status|quit)
+    exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" "$@" ;;
+  inject)
+    shift
+    exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" inject "$@" ;;
+  install)
+    KEY="${2:-F9}"
+    SCHEMA=org.gnome.settings-daemon.plugins.media-keys
+    CUR=$(gsettings get $SCHEMA custom-keybindings)
+    PATH_="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/voicetyper/"
+    command -v gsettings >/dev/null || { echo "需要 gsettings"; exit 1; }
+    if [ "$CUR" = "@as []" ]; then
+      gsettings set $SCHEMA custom-keybindings "['$PATH_']"
+    elif ! echo "$CUR" | grep -q "$PATH_"; then
+      NEW=$(echo "$CUR" | sed "s/]$/, '$PATH_']/" | sed "s/@as //")
+      gsettings set $SCHEMA custom-keybindings "$NEW"
+    fi
+    BIND="${SCHEMA}.custom-keybinding:$PATH_"
+    gsettings set $BIND name 'Voice Typer'
+    gsettings set $BIND command "$DIR/bin/voice toggle"
+    gsettings set $BIND binding "$KEY"
+    echo "已安装快捷键: $KEY → voice toggle"
+    ;;
+  uninstall)
+    SCHEMA=org.gnome.settings-daemon.plugins.media-keys
+    PATH_="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/voicetyper/"
+    CUR=$(gsettings get $SCHEMA custom-keybindings)
+    NEW=$(echo "$CUR" | sed "s/, '$PATH_'//" | sed "s/'$PATH_'//")
+    gsettings set $SCHEMA custom-keybindings "$NEW"
+    echo "已移除快捷键"
+    ;;
+  *)
+    echo "用法: voice [toggle|start|stop|status|daemon|quit|install [快捷键]|uninstall]"
+    exit 1 ;;
+esac

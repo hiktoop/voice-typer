@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# 试听结束音候选，并把开始音夹在前后做对比。
+# 用法: try-stop-sounds [音量]
+set -uo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VOL="${1:-131072}"
+
+declare -A DESC=(
+  [A-pure-220]="A  220Hz 纯正弦，几乎没有泛音 —— 最朴素"
+  [B-thick-196]="B  196Hz + 极弱八度 —— 稍厚一点"
+  [C-deep-165]="C  165Hz 纯正弦 —— 最低沉"
+  [D-dull-247]="D  247Hz 极闷 —— 音高偏中但听感钝"
+)
+
+echo "先听一下当前的『开始』音（作参照）："
+paplay --volume="$VOL" "$DIR/assets/start.wav"
+sleep 0.8
+echo
+
+for f in "$DIR"/assets/candidates-stop/*.wav; do
+  n=$(basename "$f" .wav)
+  echo "▶ ${DESC[$n]:-$n}"
+  paplay --volume="$VOL" "$f"
+  sleep 0.6
+done
+
+echo
+echo "对照试听（开始 → 结束）："
+for f in "$DIR"/assets/candidates-stop/*.wav; do
+  n=$(basename "$f" .wav)
+  echo "▶ 开始 + $n"
+  paplay --volume="$VOL" "$DIR/assets/start.wav"
+  sleep 0.8
+  paplay --volume="$VOL" "$f"
+  sleep 0.8
+done
+echo
+echo "选好后告诉我字母即可。"

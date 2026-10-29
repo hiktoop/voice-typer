@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# 试听所有候选提示音。用法: try-sounds [音量]
+# 音量默认 131072（200%），因为系统输出音量可能很低。
+set -uo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VOL="${1:-131072}"
+
+declare -A DESC=(
+  [1-soft-chime]="柔和钟声（784Hz + 泛音，衰减自然）"
+  [2-marimba]="木琴单音（880Hz，短促清脆）"
+  [3-drop]="水滴声（音高快速下滑）"
+  [4-bell]="轻铃（523Hz + 高次泛音，余韵较长）"
+  [5-two-up]="双音上行（587→880Hz，有『完成』感）"
+  [6-wood-low]="低沉木击（330Hz，厚实）"
+  [7-glass]="玻璃音（1046Hz + 2093Hz，明亮）"
+  [8-soft-blip]="极简轻点（660Hz，最短）"
+)
+
+for f in "$DIR"/assets/candidates/*.wav; do
+  n=$(basename "$f" .wav)
+  echo "▶ $n —— ${DESC[$n]:-}"
+  paplay --volume="$VOL" "$f"
+  sleep 0.45
+done
+echo
+echo "选好后告诉我编号即可。"
