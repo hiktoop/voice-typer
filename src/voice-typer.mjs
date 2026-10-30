@@ -24,7 +24,7 @@
 import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import os from 'node:os';
@@ -131,25 +131,58 @@ async function beep(which) {
 /* ---------------- 录音指示器 ----------------
  * 用一条「永不自动消失」的高优先级通知作为可见标记（紫红色圆点图标），
  * 停止录音时按 ID 精确关闭它，不会残留。 */
-let indicatorId = null;
-function indicatorShow() {
-	if (!NOTIFY) return;
-	/* 用 normal 优先级 + 不自动消失：比 critical 小一圈，也没有强制停留的沉重感。
-	 * 不写正文，只留一行标题，尽量不占地方。 */
-	const msg = ['-a', 'voice-typer', '-u', 'normal', '-t', '0', '-p',
-		'-i', 'media-record', '🎤 录音中'];
-	execFile('notify-send', msg, (err, stdout) => {
-		if (!err) indicatorId = String(stdout).trim() || null;
-	});
+/* 指示器通知的 ID 要落盘。
+ * 通知设了 -t 0（永不自动消失），一旦守护进程在录音途中重启，内存里的 ID 就丢了，
+ * 那条通知会永久挂在通知中心里——反复重启就会堆成一长串。
+ * 因此：ID 写入临时文件；每次显示都用 --replace-id 复用同一个 ID（实测替换后 ID 不变），
+ * 保证任何时刻最多只有一条；启动时先清掉上一轮可能遗留的那条。 */
+const INDICATOR_ID_FILE = join(os.tmpdir(), 'voice-typer-indicator.id');
+
+function readIndicatorId() {
+	try {
+		const v = readFileSync(INDICATOR_ID_FILE, 'utf8').trim();
+		return /^\d+$/.test(v) ? v : null;
+	} catch { return null; }
 }
-function indicatorHide() {
-	if (!NOTIFY || !indicatorId) return;
-	const id = indicatorId;
-	indicatorId = null;
+function writeIndicatorId(id) {
+	try {
+		if (id) writeFileSync(INDICATOR_ID_FILE, String(id), 'utf8');
+		else { try { unlinkSync(INDICATOR_ID_FILE); } catch {} }
+	} catch {}
+}
+function closeNotification(id) {
+	if (!id) return;
 	execFile('gdbus', ['call', '--session',
 		'--dest', 'org.freedesktop.Notifications',
 		'--object-path', '/org/freedesktop/Notifications',
-		'--method', 'org.freedesktop.Notifications.CloseNotification', id], () => {});
+		'--method', 'org.freedesktop.Notifications.CloseNotification', String(id)], () => {});
+}
+
+function indicatorShow() {
+	if (!NOTIFY) return;
+	const prev = readIndicatorId();
+	const msg = ['-a', 'voice-typer', '-u', 'normal', '-t', '0', '-p',
+		'-i', 'media-record', '🎤 录音中'];
+	if (prev) msg.push('-r', prev);
+	execFile('notify-send', msg, (err, stdout) => {
+		if (!err) {
+			const id = String(stdout).trim();
+			if (id) writeIndicatorId(id);
+		}
+	});
+}
+function indicatorHide() {
+	if (!NOTIFY) return;
+	const id = readIndicatorId();
+	writeIndicatorId(null);
+	closeNotification(id);
+}
+/** 启动时清理上一轮可能遗留的指示器通知 */
+function indicatorCleanupStale() {
+	if (!NOTIFY) return;
+	const id = readIndicatorId();
+	writeIndicatorId(null);
+	closeNotification(id);
 }
 
 /* ---------------- 识别引擎 ---------------- */
@@ -582,6 +615,8 @@ const cmd = process.argv[2] ?? 'status';
 
 if (cmd === 'dmn') {
 	const d = new Daemon();
+	/* 先清掉上一轮遗留的指示器通知，避免重启后堆在通知中心里 */
+	indicatorCleanupStale();
 	d.init().then(() => {
 		if (existsSync(SOCK)) { try { unlinkSync(SOCK); } catch {} }
 		const server = net.createServer((conn) => {
@@ -608,6 +643,30 @@ if (cmd === 'dmn') {
 		notify('语音输入启动失败', e.message, 'critical');
 		process.exit(1);
 	});
+} else if (cmd === 'clean-notifications') {
+	/* 清理通知中心里堆积的通知。
+	 * freedesktop 通知规范没有「枚举」接口，只能按 ID 逐个 CloseNotification；
+	 * 注意这会关掉所有应用的通知，不只是 voice-typer 的。 */
+	const max = Number(process.argv[3] ?? 400);
+	console.log(`正在清理 ID 1-${max} 的通知（会关掉所有应用的通知）…`);
+	let closed = 0;
+	const closeOne = (id) => new Promise((res) => {
+		execFile('gdbus', ['call', '--session',
+			'--dest', 'org.freedesktop.Notifications',
+			'--object-path', '/org/freedesktop/Notifications',
+			'--method', 'org.freedesktop.Notifications.CloseNotification', String(id)],
+			(err, stdout) => {
+				if (!err && /\(true,\)|\(\)/.test(String(stdout).trim())) closed++;
+				res();
+			});
+	});
+	for (let id = 1; id <= max; id++) {
+		await closeOne(id);
+		if (id % 50 === 0) process.stdout.write(`.`);
+	}
+	// 顺带清掉我们自己记录的指示器 ID
+	writeIndicatorId(null);
+	console.log(`\n完成，关闭了 ${closed} 条通知。`);
 } else if (cmd === 'quit') {
 	const r = await send('quit', 5000);
 	console.log(JSON.stringify(r));

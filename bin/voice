@@ -18,6 +18,9 @@ case "${1:-toggle}" in
   daemon) exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" dmn ;;
   toggle|start|stop|status|quit)
     exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" "$@" ;;
+  clean-notifications)
+    shift
+    exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" clean-notifications "$@" ;;
   inject)
     shift
     exec "$NODE_BIN" "$DIR/src/voice-typer.mjs" inject "$@" ;;

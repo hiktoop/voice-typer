@@ -113,6 +113,7 @@ setsid nohup ./bin/voice daemon > /tmp/vt-daemon.log 2>&1 < /dev/null &   # 后�
 ./bin/voice daemon         # 前台运行守护进程
 
 ./bin/voice inject "文字"   # 直接把文字注入光标处（排错用）
+./bin/voice clean-notifications [上限]   # 清理通知中心堆积的通知
 ./bin/voice install [键位]  # 安装 GNOME 全局快捷键
 ./bin/voice uninstall      # 移除快捷键
 
@@ -276,11 +277,15 @@ EOF
 一次性交出整段 UTF-8 文本。逐字符重映射（`xtype`）会被输入法或应用的
 键盘映射缓存搞乱字符顺序，所以只作为备用。
 
-**2. 没有 xdotool / 没有 X11 开发包**
+**2. 录音指示器用固定 ID 复用**
+通知 ID 落盘到 `/tmp/voice-typer-indicator.id`，每次显示用 `--replace-id` 复用同一个，
+保证通知中心里最多只有一条；守护进程启动时先关闭上一轮可能遗留的那条。
+
+**3. 没有 xdotool / 没有 X11 开发包**
 所有 C 程序都通过 `dlopen` 在运行时解析 `libX11.so.6` / `libXtst.so.6`，
 手写 `XSelectionRequest`/`XSelectionNotify` 事件结构，不依赖任何 `-dev` 包。
 
-**3. 标点在识别之后单独加**
+**4. 标点在识别之后单独加**
 Paraformer 本身不产出标点。各段识别结果先拼接成完整文本，
 再统一送入 CT-Transformer，跨段衔接更自然。
 
@@ -307,6 +312,18 @@ echo $DISPLAY                             # 必须是 X11 显示（如 :0）
 **识别结果错乱**——说明走的是 `type` 模式，改回默认的 `paste`。
 
 **首字被吃掉**——调大 `VOICE_TYPER_ONSET_PADDING`（如 `0.5`）。
+
+**通知中心堆满「🎤 录音中」**——指示器通知设了 `-t 0`（不自动消失），
+早期版本通知 ID 只存在内存里，守护进程在录音途中重启就会丢 ID，
+那条通知便永久留下。现已修好（ID 落盘 + `--replace-id` 复用 + 启动清理）。
+
+清理历史遗留：
+
+```bash
+./bin/voice clean-notifications 400   # 注意：会关掉所有应用的通知
+```
+
+也可以直接在 GNOME 通知列表里点「清空」。
 
 ---
 
